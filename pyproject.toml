@@ -1,0 +1,17 @@
+[project]
+name = "celcat-mcp"
+version = "0.1.0"
+description = "MCP server for Imperial College CELCAT timetable data"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "requests>=2.31.0",
+    "cachetools>=5.3.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.scripts]
+celcat-mcp = "celcat_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
