@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date, timedelta
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .client import CelcatClient
 from .models import RESOURCE_TYPES
@@ -14,9 +16,19 @@ from .models import RESOURCE_TYPES
 logger = logging.getLogger(__name__)
 client = CelcatClient()
 
+_allowed_hosts = [
+    h.strip() for h in os.getenv(
+        "CELCAT_MCP_ALLOWED_HOSTS",
+        "localhost,127.0.0.1,celcat.icrobotics.co.uk",
+    ).split(",") if h.strip()
+]
+
 server = FastMCP(
     "celcat-mcp",
     instructions="Read-only access to Imperial College London CELCAT timetable data (rooms)",
+    transport_security=TransportSecuritySettings(
+        allowed_hosts=_allowed_hosts,
+    ),
 )
 
 
