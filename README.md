@@ -20,7 +20,8 @@ python -m celcat_mcp.server
 | Tool | Description |
 |------|-------------|
 | `list_resource_types` | List available resource types and their access levels |
-| `list_rooms` | List all bookable rooms in the timetable system |
+| `list_rooms` | List rooms with full metadata (department, capacity, campus, room type, room access) |
+| `get_room_details` | Get all metadata for specific room IDs |
 | `get_room_timetable` | Get events for specific room(s) over a date range |
 | `search_events` | Search events by keyword (name, module, room, staff) |
 | `get_event_details` | Get full details of a specific event by ID |
