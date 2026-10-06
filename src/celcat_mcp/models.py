@@ -9,6 +9,13 @@ class Room:
     name: str
     department: Optional[str] = None
     campus: Optional[str] = None
+    capacity: Optional[int] = None
+    room_type: Optional[str] = None
+    room_access: Optional[str] = None
+    # Every labelled field CELCAT returns for the room (label -> value),
+    # so fields we don't model explicitly are still exposed.
+    attributes: dict[str, str] = field(default_factory=dict)
+    details_loaded: bool = False
 
 
 @dataclass

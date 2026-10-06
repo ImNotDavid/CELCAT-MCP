@@ -32,6 +32,28 @@ server = FastMCP(
 )
 
 
+def _format_room(r: Any, indent: str = "  ") -> list[str]:
+    lines = [f"{indent}{r.id}: {r.name}"]
+    shown = {"department", "capacity", "campus", "room type", "room access"}
+    if r.details_loaded:
+        fields = [
+            ("Department", r.department),
+            ("Capacity", r.capacity),
+            ("Campus", r.campus),
+            ("Room Type", r.room_type),
+            ("Room Access", r.room_access),
+        ]
+        for label, val in fields:
+            if val not in (None, ""):
+                lines.append(f"{indent}  {label}: {val}")
+        for label, val in r.attributes.items():
+            if label.lower() not in shown and val:
+                lines.append(f"{indent}  {label}: {val}")
+    elif r.department:
+        lines[0] += f" ({r.department})"
+    return lines
+
+
 def _format_event(ev: Any) -> str:
     lines = [
         f"Event: {ev.name}",
@@ -67,10 +89,10 @@ def list_resource_types() -> str:
 
 
 @server.tool(
-    description="List bookable rooms. Optionally provide a search query to find specific rooms (e.g. 'Beit', 'Lecture', 'Meeting'). Without a query, returns rooms matching 'Lecture'."
+    description="List bookable rooms with full metadata (department, capacity, campus, room type, room access). Optionally provide a search query (e.g. 'Beit', 'EENG 408', 'Meeting'). Without a query, returns rooms matching 'Lecture'. Set include_details=false for a faster id/name-only list."
 )
-def list_rooms(query: str = "Lecture") -> str:
-    rooms = client.search_rooms(query)
+def list_rooms(query: str = "Lecture", include_details: bool = True) -> str:
+    rooms = client.search_rooms(query, with_details=include_details)
     if not rooms:
         return (
             f"No rooms found matching '{query}'. "
@@ -78,8 +100,24 @@ def list_rooms(query: str = "Lecture") -> str:
         )
     lines = [f"Found {len(rooms)} room(s) matching '{query}':\n"]
     for r in rooms:
-        dept = f" ({r.department})" if r.department else ""
-        lines.append(f"  {r.id}: {r.name}{dept}")
+        lines.extend(_format_room(r))
+    return "\n".join(lines)
+
+
+@server.tool(
+    description="Get all metadata for specific rooms by ID (e.g. 'EENG-04-408'): department, capacity, campus, room type, room access and any other fields CELCAT provides. Room IDs come from list_rooms."
+)
+def get_room_details(room_ids: list[str]) -> str:
+    rooms = client.get_room_details(room_ids)
+    if not rooms:
+        return f"No room details found for: {', '.join(room_ids)}."
+    lines: list[str] = []
+    for r in rooms:
+        lines.extend(_format_room(r, indent=""))
+        lines.append("")
+    missing = set(room_ids) - {r.id for r in rooms}
+    if missing:
+        lines.append(f"Not found: {', '.join(sorted(missing))}")
     return "\n".join(lines)
 
 

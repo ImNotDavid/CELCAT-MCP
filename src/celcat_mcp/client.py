@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from .cache import calendar_cache, resource_cache, room_list_cache
+from .cache import calendar_cache, resource_cache, room_detail_cache, room_list_cache
 from .models import RESOURCE_TYPES, PUBLIC_RESOURCE_TYPES, Room, TimetableEvent
 
 logger = logging.getLogger(__name__)
@@ -85,12 +85,80 @@ class CelcatClient:
         return dict(PUBLIC_RESOURCE_TYPES)
 
     def _get_room(self, fed_id: str) -> Room | None:
-        cache_key = f"room_{fed_id}"
-        if cache_key in room_list_cache:
-            return room_list_cache[cache_key]
-        return None
+        return room_detail_cache.get(fed_id)
 
-    def search_rooms(self, query: str) -> list[Room]:
+    @staticmethod
+    def _apply_sidebar_elements(room: Room, elements: list[dict[str, Any]]) -> None:
+        """Fill a Room from the label/content pairs in a GetSideBarResources item."""
+        for el in elements:
+            label = (el.get("label") or "").strip()
+            content = el.get("content")
+            content = "" if content is None else str(content).strip()
+            if not label:
+                if content:
+                    room.name = content
+                continue
+            room.attributes[label] = content
+            key = label.lower()
+            if key == "department":
+                room.department = content
+            elif key == "campus":
+                room.campus = content
+            elif key == "capacity":
+                try:
+                    room.capacity = int(content)
+                except ValueError:
+                    room.capacity = None
+            elif key == "room type":
+                room.room_type = content
+            elif key == "room access":
+                room.room_access = content
+        room.details_loaded = True
+
+    def get_room_details(self, room_ids: list[str]) -> list[Room]:
+        """Fetch full metadata (capacity, campus, type, access...) for rooms.
+
+        Uses Home/GetSideBarResources, which accepts several federationIds as a
+        repeated form field (comma-separated values do not work). Requests are
+        batched and results cached per room.
+        """
+        found: dict[str, Room] = {}
+        missing: list[str] = []
+        for rid in dict.fromkeys(room_ids):
+            cached = room_detail_cache.get(rid)
+            if cached is not None:
+                found[rid] = cached
+            else:
+                missing.append(rid)
+
+        batch = 25
+        for i in range(0, len(missing), batch):
+            chunk = missing[i : i + batch]
+            data = self._api_post(
+                "Home/GetSideBarResources",
+                {"resType": "102", "federationIds": chunk},
+            )
+            if not data:
+                continue
+            for item in data.get("items", []):
+                fid = item.get("federationId")
+                if not fid:
+                    continue
+                room = Room(id=str(fid), name="")
+                self._apply_sidebar_elements(room, item.get("elements", []))
+                room_detail_cache[room.id] = room
+                found[room.id] = room
+
+        return [found[rid] for rid in dict.fromkeys(room_ids) if rid in found]
+
+    def search_rooms(self, query: str, with_details: bool = False) -> list[Room]:
+        rooms = self._search_rooms_basic(query)
+        if with_details and rooms:
+            detailed = {r.id: r for r in self.get_room_details([r.id for r in rooms])}
+            rooms = [detailed.get(r.id, r) for r in rooms]
+        return rooms
+
+    def _search_rooms_basic(self, query: str) -> list[Room]:
         cache_key = f"search_{query}"
         if cache_key in room_list_cache:
             return list(room_list_cache[cache_key])
@@ -122,7 +190,6 @@ class CelcatClient:
                     department=item.get("dept"),
                 )
                 results_list.append(room)
-                room_list_cache[f"room_{room.id}"] = room
             total = data.get("total", 0) or 0
             if page * batch_size >= total:
                 break
@@ -131,8 +198,8 @@ class CelcatClient:
         room_list_cache[cache_key] = results_list
         return results_list
 
-    def list_rooms(self) -> list[Room]:
-        return self.search_rooms("Lecture")
+    def list_rooms(self, with_details: bool = False) -> list[Room]:
+        return self.search_rooms("Lecture", with_details=with_details)
 
     def get_calendar_data(
         self,
